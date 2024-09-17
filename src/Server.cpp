@@ -8,6 +8,25 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+ 
+
+int multiPing(int fd){
+  char *msg[15];
+  std::cout<<fd<<std::endl;
+  while (1){
+    if (recv(fd,(void*)msg,15,0)==-1){
+      std::cerr<<"Failed to reiceve message"<<std::endl;
+      return 1;
+    }
+    const char* message ="+PONG\r\n";
+    if (send(fd,(void*) message,strlen(message),0)==-1){
+      std::cerr<<"Failed to send message"<<std::endl;
+      return 1;
+    }
+  }
+  return 0;
+}
+
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
   std::cout << std::unitbuf;
@@ -52,9 +71,13 @@ int main(int argc, char **argv) {
   std::cout << "Waiting for a client to connect...\n";
   
   int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-  send(client_fd,"+PONG\r\n",7,0);
+  
+  if (multiPing(client_fd)==1){
+      return 1;
+  }
   
   std::cout << "Client connected\n";
+  
   
   close(server_fd);
 
