@@ -7,25 +7,36 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <thread>
+#include <vector>
 
- 
 
-int multiPing(int fd){
-  char *msg[15];
-  std::cout<<fd<<std::endl;
-  while (1){
-    if (recv(fd,(void*)msg,15,0)==-1){
-      std::cerr<<"Failed to reiceve message"<<std::endl;
-      return 1;
+
+void multiPing(int fd) {
+    char msg[15];  // Changed to a simple buffer, rather than an array of pointers
+    while (1) {
+        // Receive message
+        ssize_t bytes_received = recv(fd, (void*)msg, sizeof(msg), 0);
+        if (bytes_received == -1) {
+            std::cerr << "Failed to receive message" << std::endl;
+            close(fd);
+            return;
+        }
+        if (bytes_received == 0){
+            close(fd);
+            return;
+        }
+        // Respond with +PONG\r\n
+        const char* message = "+PONG\r\n";
+        ssize_t bytes_sent = send(fd, (void*)message, strlen(message),0);
+        if (bytes_sent == -1) {
+            std::cerr << "Failed to send message" << std::endl;
+            return;
+        }
+        
     }
-    const char* message ="+PONG\r\n";
-    if (send(fd,(void*) message,strlen(message),0)==-1){
-      std::cerr<<"Failed to send message"<<std::endl;
-      return 1;
-    }
-  }
-  return 0;
 }
+
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -70,13 +81,17 @@ int main(int argc, char **argv) {
   
   std::cout << "Waiting for a client to connect...\n";
   
-  int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
   
-  if (multiPing(client_fd)==1){
-      return 1;
+  while (1){
+    int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+
+    std::cout << "Client connected\n";
+
+    std::thread nw(multiPing,client_fd);
+    //multiPing(client_fd);
+    nw.detach();
   }
   
-  std::cout << "Client connected\n";
   
   
   close(server_fd);
