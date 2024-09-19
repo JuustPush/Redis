@@ -6,6 +6,7 @@ file(GLOB_RECURSE SOURCE_FILES src/*.cpp)
 
 set(CMAKE_CXX_STANDARD 23) # Enable the C++23 standard
 set(THREADS_PREFER_PTHREAD_FLAG ON)
+#set(CMAKE_PREFIX_PATH "/home/kali/codecrafters/codecrafters-redis-cpp/build/vcpkg_installed/x64-linux/share/asio")
 
 find_package(Threads REQUIRED)
 find_package(asio CONFIG REQUIRED)
