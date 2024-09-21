@@ -15,6 +15,10 @@
 
 #define BUFFER_SIZE 1024
 #define MAX_CONNECTIONS 30
+
+std::string dir;
+std::string dbfilename;
+
 std::vector<std::string> splitRedisCommand(std::string input, std::string separator, int separatorLength) {
   std::vector<std::string> res;
   std::size_t foundSeparator = input.find(separator);
@@ -79,58 +83,83 @@ void handle_connection(int client) {
             send(client, g_response.data(), g_response.length(), 0);
         }
       }
+    } else if (cmd == "config"){
+        std::string response="*2\r\n";
+        if (tokens[4] == "GET"){
+            if (tokens[6]=="dir"){
+                response+="$3\r\ndir\r\n";
+                response+="$" + std::to_string(dir.size()) + "\r\n" + dir + "\r\n";
+            }
+            else if (tokens[6]=="dbfilename"){
+                response += "$10\r\ndbfilename\r\n";
+                response += "$" + std::to_string(dbfilename.size()) + "\r\n" + dbfilename + "\r\n";
+            }
+            send(client,response.data(),response.length(),0);
+        }
     }
   }
   close(client);
 }
 int main(int argc, char **argv) {
-  // You can use print statements as follows for debugging, they'll be visible when running tests.
-  // std::cout << "Logs from your program will appear here!\n";
-  // Uncomment this block to pass the first stage
-  //
-  int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (server_fd < 0) {
-   std::cerr << "Failed to create server socket\n";
-   return 1;
-  }
-  //
-  // // Since the tester restarts your program quite often, setting SO_REUSEADDR
-  // // ensures that we don't run into 'Address already in use' errors
-  int reuse = 1;
-  if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+
+    for (int i=0;i<argc;i++){
+        if (strcmp(argv[i],"--dir")==0){
+            dir = argv[++i];
+            continue;
+        }
+        if (strcmp(argv[i],"--dbfilename")==0){
+            dbfilename = argv[++i];
+        }
+        
+    }
+    // You can use print statements as follows for debugging, they'll be visible when running tests.
+    // std::cout << "Logs from your program will appear here!\n";
+    // Uncomment this block to pass the first stage
+    //
+
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+    std::cerr << "Failed to create server socket\n";
+    return 1;
+    }
+    //
+    // // Since the tester restarts your program quite often, setting SO_REUSEADDR
+    // // ensures that we don't run into 'Address already in use' errors
+    int reuse = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
     std::cerr << "setsockopt failed\n";
     return 1;
-  }
-  //
-  struct sockaddr_in server_addr;
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(6379);
-  //
-  if (bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) != 0) {
+    }
+    //
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(6379);
+    //
+    if (bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) != 0) {
     std::cerr << "Failed to bind to port 6379\n";
     return 1;
-  }
-  //
-  int connection_backlog = 5;
-  if (listen(server_fd, connection_backlog) != 0) {
+    }
+    //
+    int connection_backlog = 5;
+    if (listen(server_fd, connection_backlog) != 0) {
     std::cerr << "listen failed\n";
     return 1;
-  }
-  //
-  struct sockaddr_in client_addr;
-  int client_addr_len = sizeof(client_addr);
-  
-  std::cout << "Waiting for a client to connect...\n";
-  
-  int n_connections = 0;
-  do {
+    }
+    //
+    struct sockaddr_in client_addr;
+    int client_addr_len = sizeof(client_addr);
+
+    std::cout << "Waiting for a client to connect...\n";
+
+    int n_connections = 0;
+    do {
     int client_fd;
     client_fd = accept(server_fd,(struct sockaddr*) &client_addr, (socklen_t *)&client_addr_len);
     std::thread t(handle_connection, client_fd);
     t.detach();
     ++n_connections;
-  } while (n_connections < MAX_CONNECTIONS);
-  close(server_fd);
-  return 0;
+    } while (n_connections < MAX_CONNECTIONS);
+    close(server_fd);
+    return 0;
 }
