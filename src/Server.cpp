@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <chrono>
 
 #define BUFFER_SIZE 1024
 #define MAX_CONNECTIONS 30
@@ -29,6 +30,7 @@ std::vector<std::string> splitRedisCommand(std::string input, std::string separa
   return res;
 }
 std::unordered_map<std::string, std::string> dictionary = {};
+std::unordered_map<std::string,long> expTime;
 void handle_connection(int client) {
   std::cout << "Client connected" << client << "\n";
   char buffer[BUFFER_SIZE];
@@ -50,13 +52,32 @@ void handle_connection(int client) {
         send(client, echo_res.data(), echo_res.length(), 0);
     } else if (cmd == "set"){
         dictionary[tokens[4]] = tokens[6];
+        if (tokens.size()>6 && tokens[8]=="px"){
+            auto now = std::chrono::system_clock::now();
+            auto now_in_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
+            auto value = now_in_ms.time_since_epoch();
+            long current_time_in_ms = value.count();
+            expTime[tokens[4]]=current_time_in_ms+std::stoi(tokens[10]);
+        }
+        else {
+            expTime[tokens[4]]=-1;
+        }
         send(client, "+OK\r\n", 5, 0);
     } else if (cmd == "get"){
       if (dictionary.find(tokens[4]) == dictionary.end()){
         send(client, "$-1\r\n", 5, 0);
       } else {
         std::string g_response = "$" + std::to_string(dictionary[tokens[4]].size()) + "\r\n" + dictionary[tokens[4]] + "\r\n";
-        send(client, g_response.data(), g_response.length(), 0);
+        auto now = std::chrono::system_clock::now();
+        auto now_in_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
+        auto value = now_in_ms.time_since_epoch();
+        long current_time_in_ms = value.count();
+        if (dictionary.find(tokens[4])!=dictionary.end() && expTime[tokens[4]]==-1 || expTime[tokens[4]]>current_time_in_ms)
+            send(client, g_response.data(), g_response.length(), 0);
+        else {
+            g_response="$-1\r\n";
+            send(client, g_response.data(), g_response.length(), 0);
+        }
       }
     }
   }
