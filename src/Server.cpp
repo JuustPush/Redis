@@ -268,6 +268,7 @@ void handle_connection(int client) {
   char buffer[BUFFER_SIZE];
   int bytes_read;
   const char* pong_response = "+PONG\r\n";
+  initializeKeyValues();
   while ((bytes_read = read(client, buffer, BUFFER_SIZE-1))>0){
     buffer[bytes_read] = '\0'; //null terminate the buffer
     std::cout << "received: " << buffer << std::endl;
@@ -296,7 +297,11 @@ void handle_connection(int client) {
         }
         send(client, "+OK\r\n", 5, 0);
     } else if (cmd == "get"){
-      if (dictionary.find(tokens[4]) == dictionary.end()){
+      if (m_mapKeyValues.find(tokens[4])!=m_mapKeyValues.end()){
+        std::string g_response = "$" + std::to_string(m_mapKeyValues[tokens[4]].size()) + "\r\n" + m_mapKeyValues[tokens[4]] + "\r\n";
+        send(client, g_response.data(), g_response.length(), 0);
+      }
+      else if (dictionary.find(tokens[4]) == dictionary.end()){
         send(client, "$-1\r\n", 5, 0);
       } else {
         std::string g_response = "$" + std::to_string(dictionary[tokens[4]].size()) + "\r\n" + dictionary[tokens[4]] + "\r\n";
@@ -325,7 +330,7 @@ void handle_connection(int client) {
             send(client,response.data(),response.length(),0);
         }
     } else if (cmd == "keys"){
-        initializeKeyValues();
+        
         auto ptr = getAllKeys(tokens[4]);
         std::vector<std::string>* rgx = ptr.get();
 
