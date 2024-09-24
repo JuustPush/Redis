@@ -333,15 +333,14 @@ void handle_connection(int client) {
         
         auto ptr = getAllKeys(tokens[4]);
         std::vector<std::string>* rgx = ptr.get();
-
+        std::string response="*"+std::to_string(rgx->size())+"\r\n";
         
         for (const auto& m : *rgx){
-            std::string response="*1\r\n";
             response+="$"+std::to_string(m.length())+"\r\n"+m+"\r\n";
             std::cout<<response<<std::endl;
-            send(client,response.data(),response.length(),0);
+            
         }
-        
+        send(client,response.data(),response.length(),0);
     }
   }
   close(client);
