@@ -129,14 +129,14 @@ std::string read_byte_to_string(std::ifstream &rdb)
         {
             int16_t val;
             rdb.read(reinterpret_cast<char*>(&val),sizeof(val));
-            val=be16toh(val);
+            //val=be16toh(val);
             return std::to_string(val);
         }
         case 32:
         {
             int32_t val;
             rdb.read(reinterpret_cast<char*>(&val),sizeof(val));
-            val = be32toh(val);
+            //val = be32toh(val);
             return std::to_string(val);
         }
     }
@@ -201,7 +201,7 @@ void initializeKeyValues(){
 			std::cout << "Reached end of database" << std::endl;
 			uint64_t checksum;
 			rdb.read(reinterpret_cast<char*>(&checksum), sizeof(checksum));
-			checksum = be64toh(checksum); // be is big endian to host order
+			//checksum = be64toh(checksum); // be is big endian to host order
 			std::cout << "DB checksum: " << checksum << std::endl;
 			
 			// Exit while loop
@@ -215,7 +215,7 @@ void initializeKeyValues(){
         // expiry time in seconds followed by 4 byte - uint32_t
         uint32_t seconds;
         rdb.read(reinterpret_cast<char*>(&seconds), sizeof(seconds));
-        expire_time_s = be32toh(seconds);
+        //expire_time_s = be32toh(seconds);
         std::cout << "EXPIRETIME: " << expire_time_s << std::endl;
         rdb.read(reinterpret_cast<char*>(&opcode), 1);
 		}
@@ -224,7 +224,7 @@ void initializeKeyValues(){
 		{
         // expiry time in ms, followd by 8 byte unsigned - uint64_t
         rdb.read(reinterpret_cast<char*>(&expire_time_ms), sizeof(expire_time_ms));
-        expire_time_ms = be32toh(expire_time_ms);
+        //expire_time_ms = be32toh(expire_time_ms);
         std::cout << "EXPIRETIME ms: " << expire_time_ms << std::endl;
         rdb.read(reinterpret_cast<char*>(&opcode), 1);
 
@@ -235,13 +235,15 @@ void initializeKeyValues(){
 
         timeval t;
         gettimeofday(&t,NULL);
-        std::cout<<"debug"<<std::endl;
         if (expire_time_s == 0 || t.tv_sec <expire_time_s){
             std::cout << "Adding " << key << " -> " << value << std::endl;
             m_mapKeyValues[key] = value;
-            t.tv_sec = expire_time_s;
-            t.tv_usec = expire_time_ms / 1000;
-            m_mapKeyTimeouts[key] = t;
+            if (expire_time_ms != 0)
+			{
+				t.tv_sec = expire_time_ms / 1000;
+				t.tv_usec = (expire_time_ms % 1000) * 1000;
+				m_mapKeyTimeouts[key] = t;
+			}
 		}
     }
     rdb.close();
@@ -297,7 +299,10 @@ void handle_connection(int client) {
         }
         send(client, "+OK\r\n", 5, 0);
     } else if (cmd == "get"){
-      if (m_mapKeyValues.find(tokens[4])!=m_mapKeyValues.end()){
+        timeval t;
+        gettimeofday(&t,NULL);
+        std::cout<<(t.tv_sec)<<" "<<m_mapKeyTimeouts[tokens[4]].tv_sec<<std::endl;
+      if (m_mapKeyValues.find(tokens[4])!=m_mapKeyValues.end() && (m_mapKeyTimeouts[tokens[4]].tv_sec == 0 || m_mapKeyTimeouts[tokens[4]].tv_sec > (t.tv_sec))){
         std::string g_response = "$" + std::to_string(m_mapKeyValues[tokens[4]].size()) + "\r\n" + m_mapKeyValues[tokens[4]] + "\r\n";
         send(client, g_response.data(), g_response.length(), 0);
       }
