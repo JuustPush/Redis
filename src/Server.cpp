@@ -23,6 +23,7 @@ std::string dir;
 std::string dbfilename;
 std::map<std::string,std::string> m_mapKeyValues;
 std::map<std::string, timeval> m_mapKeyTimeouts;
+int port=6379;
 
 
 std::vector<std::string> splitRedisCommand(std::string input, std::string separator, int separatorLength) {
@@ -351,7 +352,6 @@ void handle_connection(int client) {
   close(client);
 }
 int main(int argc, char **argv) {
-
     for (int i=0;i<argc;i++){
         if (strcmp(argv[i],"--dir")==0){
             dir = argv[++i];
@@ -360,8 +360,12 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i],"--dbfilename")==0){
             dbfilename = argv[++i];
         }
+        if (strcmp(argv[i],"--port")==0){
+            port = std::stoi(argv[++i]);
+        }
         
     }
+    
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     // std::cout << "Logs from your program will appear here!\n";
     // Uncomment this block to pass the first stage
@@ -384,7 +388,7 @@ int main(int argc, char **argv) {
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(6379);
+    server_addr.sin_port = htons(port);
     //
     if (bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) != 0) {
     std::cerr << "Failed to bind to port 6379\n";
