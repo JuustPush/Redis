@@ -347,6 +347,10 @@ void handle_connection(int client) {
             
         }
         send(client,response.data(),response.length(),0);
+    } else if (cmd == "info" && tokens[4] == "replication"){
+        std::string response("role:master");
+        response = "$"+std::to_string(response.size())+"\r\n"+response+"\r\n";
+        send(client,response.data(),response.length(),0);
     }
   }
   close(client);
@@ -365,7 +369,7 @@ int main(int argc, char **argv) {
         }
         
     }
-    
+
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     // std::cout << "Logs from your program will appear here!\n";
     // Uncomment this block to pass the first stage
