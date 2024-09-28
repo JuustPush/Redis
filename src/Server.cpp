@@ -349,7 +349,7 @@ void handle_connection(int client) {
         }
         send(client,response.data(),response.length(),0);
     } else if (cmd == "info" && tokens[4] == "replication"){
-        std::string response = IS_MASTER ? "role:master" : "role:slave";
+        std::string response = IS_MASTER ? "role:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0" : "role:slave";
         response = "$"+std::to_string(response.size())+"\r\n"+response+"\r\n";
         send(client,response.data(),response.length(),0);
     }
