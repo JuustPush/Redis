@@ -24,6 +24,7 @@ std::string dbfilename;
 std::map<std::string,std::string> m_mapKeyValues;
 std::map<std::string, timeval> m_mapKeyTimeouts;
 int port=6379;
+bool IS_MASTER = true;
 
 
 std::vector<std::string> splitRedisCommand(std::string input, std::string separator, int separatorLength) {
@@ -348,7 +349,7 @@ void handle_connection(int client) {
         }
         send(client,response.data(),response.length(),0);
     } else if (cmd == "info" && tokens[4] == "replication"){
-        std::string response("role:master");
+        std::string response = IS_MASTER ? "role:master" : "role:slave";
         response = "$"+std::to_string(response.size())+"\r\n"+response+"\r\n";
         send(client,response.data(),response.length(),0);
     }
@@ -361,13 +362,15 @@ int main(int argc, char **argv) {
             dir = argv[++i];
             continue;
         }
-        if (strcmp(argv[i],"--dbfilename")==0){
+        else if (strcmp(argv[i],"--dbfilename")==0){
             dbfilename = argv[++i];
         }
-        if (strcmp(argv[i],"--port")==0){
+        else if (strcmp(argv[i],"--port")==0){
             port = std::stoi(argv[++i]);
         }
-        
+        else if (strcmp(argv[i],"--replicaof")==0){
+            IS_MASTER=false;
+        }
     }
 
     // You can use print statements as follows for debugging, they'll be visible when running tests.
