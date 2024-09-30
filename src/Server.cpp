@@ -15,6 +15,7 @@
 #include <map>
 #include <fstream>
 #include <cassert>
+#include <sstream>
 
 #define BUFFER_SIZE 1024
 #define MAX_CONNECTIONS 30
@@ -26,6 +27,16 @@ std::map<std::string, timeval> m_mapKeyTimeouts;
 int port=6379;
 bool IS_MASTER = true;
 
+
+std::vector<std::string> split(const std::string& str, char delimiter) {
+    std::vector<std::string> tokens;
+    std::stringstream ss(str);
+    std::string token;
+    while (getline(ss, token, delimiter)) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
 
 std::vector<std::string> splitRedisCommand(std::string input, std::string separator, int separatorLength) {
   std::vector<std::string> res;
@@ -356,6 +367,7 @@ void handle_connection(int client) {
   }
   close(client);
 }
+
 int main(int argc, char **argv) {
     for (int i=0;i<argc;i++){
         if (strcmp(argv[i],"--dir")==0){
@@ -370,6 +382,28 @@ int main(int argc, char **argv) {
         }
         else if (strcmp(argv[i],"--replicaof")==0){
             IS_MASTER=false;
+            std::string masterHost;
+            int masterPort;
+            std::string replica_info = argv[i + 1];
+            std::vector<std::string> parts = split(replica_info, ' ');
+            if (parts.size() == 2) {
+                masterHost = parts[0] == "localhost" ? "127.0.0.1" : parts[0];
+                masterPort = std::stoi(parts[1]);
+            }
+            
+
+             std::cout << "Connecting to master at " << masterHost<< ":" << masterPort << std::endl;
+            struct  sockaddr_in replica_addr;
+            replica_addr.sin_family=AF_INET;
+            replica_addr.sin_addr.s_addr=inet_addr(masterHost.c_str());
+            replica_addr.sin_port=htons(masterPort);
+
+            int master_fd = socket(AF_INET, SOCK_STREAM,0);
+            connect(master_fd, (struct sockaddr *)&replica_addr,sizeof(replica_addr));
+            std::string ping{"*1\r\n$4\r\nping\r\n"};
+            send(master_fd,ping.data(),ping.size(),0);
+            
+            
         }
     }
 
@@ -378,6 +412,7 @@ int main(int argc, char **argv) {
     // Uncomment this block to pass the first stage
     //
 
+    
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
     std::cerr << "Failed to create server socket\n";
