@@ -366,6 +366,9 @@ void handle_connection(int client) {
     } else if (cmd == "replconf"){
         std::string response = "+OK\r\n";
         send(client,response.data(),response.size(),0);
+    } else if (cmd == "psync"){
+        std::string response = "+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n";
+        send(client,response.data(),response.size(),0);
     }
   }
   close(client);
