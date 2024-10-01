@@ -400,10 +400,23 @@ int main(int argc, char **argv) {
 
             int master_fd = socket(AF_INET, SOCK_STREAM,0);
             connect(master_fd, (struct sockaddr *)&replica_addr,sizeof(replica_addr));
+            char recv_buf[BUFFER_SIZE];
+            std::memset(recv_buf, 0, sizeof(recv_buf));
+
             std::string ping{"*1\r\n$4\r\nping\r\n"};
             send(master_fd,ping.data(),ping.size(),0);
-            
-            
+            ssize_t recv_bytes = recv(master_fd, recv_buf, BUFFER_SIZE, 0);
+            std::string listening_port="*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$"+std::to_string(std::to_string(port).size())+"\r\n"+std::to_string(port)+"\r\n";
+            send(master_fd,listening_port.data(),listening_port.size(),0);
+            recv_bytes = recv(master_fd, recv_buf, BUFFER_SIZE, 0);
+            std::string capa = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n";
+            send(master_fd,capa.data(),capa.size(),0);
+            recv_bytes = recv(master_fd, recv_buf, BUFFER_SIZE, 0);
+            std::string ok = "+OK\r\n";
+            send(master_fd,ok.data(),ok.size(),0);
+
+
+            close(master_fd);
         }
     }
 
