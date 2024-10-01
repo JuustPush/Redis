@@ -26,7 +26,7 @@ std::map<std::string,std::string> m_mapKeyValues;
 std::map<std::string, timeval> m_mapKeyTimeouts;
 int port=6379;
 bool IS_MASTER = true;
-
+std::vector<int> replica_fd;
 
 std::vector<std::string> split(const std::string& str, char delimiter) {
     std::vector<std::string> tokens;
@@ -311,6 +311,15 @@ void handle_connection(int client) {
             expTime[tokens[4]]=-1;
         }
         send(client, "+OK\r\n", 5, 0);
+
+
+        for (int i = 0; i < replica_fd.size(); i++)
+            {
+                std::string request = "*3\r\n$3\r\nSET\r\n$" + std::to_string(tokens[4].size()) + "\r\n" + tokens[4] + "\r\n$" + std::to_string(tokens[6].size()) + "\r\n" + tokens[6] + "\r\n";
+                send(replica_fd[i], request.data(), request.size(),0);
+            }
+
+
     } else if (cmd == "get"){
         timeval t;
         gettimeofday(&t,NULL);
@@ -371,6 +380,7 @@ void handle_connection(int client) {
         const std::string empty_rdb = "\x52\x45\x44\x49\x53\x30\x30\x31\x31\xfa\x09\x72\x65\x64\x69\x73\x2d\x76\x65\x72\x05\x37\x2e\x32\x2e\x30\xfa\x0a\x72\x65\x64\x69\x73\x2d\x62\x69\x74\x73\xc0\x40\xfa\x05\x63\x74\x69\x6d\x65\xc2\x6d\x08\xbc\x65\xfa\x08\x75\x73\x65\x64\x2d\x6d\x65\x6d\xc2\xb0\xc4\x10\x00\xfa\x08\x61\x6f\x66\x2d\x62\x61\x73\x65\xc0\x00\xff\xf0\x6e\x3b\xfe\xc0\xff\x5a\xa2";
         response+="$" + std::to_string(empty_rdb.length()) + "\r\n" + empty_rdb;
         send(client,response.data(),response.size(),0);
+        replica_fd.push_back(client);
     }
   }
   close(client);
