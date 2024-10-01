@@ -412,6 +412,9 @@ int main(int argc, char **argv) {
             std::string capa = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n";
             send(master_fd,capa.data(),capa.size(),0);
             recv_bytes = recv(master_fd, recv_buf, BUFFER_SIZE, 0);
+            std::string psync = "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n";
+            send(master_fd,psync.data(),psync.size(),0);
+            recv_bytes = recv(master_fd, recv_buf, BUFFER_SIZE, 0);
             std::string ok = "+OK\r\n";
             send(master_fd,ok.data(),ok.size(),0);
 
