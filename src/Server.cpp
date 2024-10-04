@@ -16,10 +16,8 @@
 #include <fstream>
 #include <cassert>
 #include <sstream>
-
 #define BUFFER_SIZE 1024
 #define MAX_CONNECTIONS 30
-
 std::string dir;
 std::string dbfilename;
 std::map<std::string,std::string> m_mapKeyValues;
@@ -27,7 +25,6 @@ std::map<std::string, timeval> m_mapKeyTimeouts;
 int port=6379;
 bool IS_MASTER = true;
 std::vector<int> replica_fd;
-
 std::vector<std::string> split(const std::string& str, char delimiter) {
     std::vector<std::string> tokens;
     std::stringstream ss(str);
@@ -37,7 +34,6 @@ std::vector<std::string> split(const std::string& str, char delimiter) {
     }
     return tokens;
 }
-
 std::vector<std::string> splitRedisCommand(std::string input, std::string separator, int separatorLength) {
   std::vector<std::string> res;
   std::size_t foundSeparator = input.find(separator);
@@ -52,16 +48,13 @@ std::vector<std::string> splitRedisCommand(std::string input, std::string separa
   }
   return res;
 }
-
 uint8_t read(std::ifstream &rdb)
 {
 	uint8_t val;
 	rdb.read(reinterpret_cast<char *>(&val), sizeof(val));
 	return val;
 }
-
 std::pair<std::optional<uint64_t>, std::optional<int8_t>> get_str_bytes_len(std::ifstream &rdb){
-
     auto byte = read(rdb);
 	// Get the two most significant bits of the byte
 	// These bits determine how the length is encoded
@@ -117,7 +110,6 @@ std::pair<std::optional<uint64_t>, std::optional<int8_t>> get_str_bytes_len(std:
 	}
 	return {std::nullopt, 0};
 }
-
 std::string read_byte_to_string(std::ifstream &rdb)
 {
 	std::pair<std::optional<uint64_t>,std::optional<int8_t>> decoded_size=get_str_bytes_len(rdb);
@@ -127,10 +119,8 @@ std::string read_byte_to_string(std::ifstream &rdb)
         rdb.read(buffer.data(),size);
         return std::string(buffer.data(),size);
     }
-
     assert(decoded_size.second.has_value());
     int type = decoded_size.second.value();
-
     switch(type){
         case 8:
         {
@@ -156,8 +146,6 @@ std::string read_byte_to_string(std::ifstream &rdb)
 	
     return "";
 }
-
-
 void initializeKeyValues(){
     if(dir.empty() || dbfilename.empty()) return;
     std::string rdbFullPath = dir + "/" +dbfilename;
@@ -208,7 +196,6 @@ void initializeKeyValues(){
 			std::cout << "Reached end of file" << std::endl;
 			break;
 		}
-
         if (opcode == 0xFF)
 		{
 			std::cout << "Reached end of database" << std::endl;
@@ -222,7 +209,6 @@ void initializeKeyValues(){
 		}
         uint64_t expire_time_s = 0;
 		uint64_t expire_time_ms = 0;
-
         if (opcode == 0xFD)
 		{
         // expiry time in seconds followed by 4 byte - uint32_t
@@ -232,7 +218,6 @@ void initializeKeyValues(){
         std::cout << "EXPIRETIME: " << expire_time_s << std::endl;
         rdb.read(reinterpret_cast<char*>(&opcode), 1);
 		}
-
         if  (opcode == 0xFC)
 		{
         // expiry time in ms, followd by 8 byte unsigned - uint64_t
@@ -240,12 +225,9 @@ void initializeKeyValues(){
         //expire_time_ms = be32toh(expire_time_ms);
         std::cout << "EXPIRETIME ms: " << expire_time_ms << std::endl;
         rdb.read(reinterpret_cast<char*>(&opcode), 1);
-
         }
-
         std::string key = read_byte_to_string(rdb);
         std::string value = read_byte_to_string(rdb);
-
         timeval t;
         gettimeofday(&t,NULL);
         if (expire_time_s == 0 || t.tv_sec <expire_time_s){
@@ -261,11 +243,9 @@ void initializeKeyValues(){
     }
     rdb.close();
 }
-
 std::unique_ptr<std::vector<std::string>> getAllKeys(const std::string& regex)
 {
     auto result{std::make_unique<std::vector<std::string>>()};
-
     std::cout << "Got regex: " << regex << std::endl;
 	for (const auto& key: m_mapKeyValues)
 	{
@@ -273,9 +253,6 @@ std::unique_ptr<std::vector<std::string>> getAllKeys(const std::string& regex)
 	}
 	return result;
 }
-
-
-
 std::unordered_map<std::string, std::string> dictionary = {};
 std::unordered_map<std::string,long> expTime;
 void handle_connection(int client) {
@@ -311,15 +288,11 @@ void handle_connection(int client) {
             expTime[tokens[4]]=-1;
         }
         send(client, "+OK\r\n", 5, 0);
-
-
         for (int i = 0; i < replica_fd.size(); i++)
             {
                 std::string request = "*3\r\n$3\r\nSET\r\n$" + std::to_string(tokens[4].size()) + "\r\n" + tokens[4] + "\r\n$" + std::to_string(tokens[6].size()) + "\r\n" + tokens[6] + "\r\n";
                 send(replica_fd[i], request.data(), request.size(),0);
             }
-
-
     } else if (cmd == "get"){
         timeval t;
         gettimeofday(&t,NULL);
@@ -385,7 +358,6 @@ void handle_connection(int client) {
   }
   close(client);
 }
-
 int main(int argc, char **argv) {
     for (int i=0;i<argc;i++){
         if (strcmp(argv[i],"--dir")==0){
@@ -409,18 +381,15 @@ int main(int argc, char **argv) {
                 masterPort = std::stoi(parts[1]);
             }
             
-
              std::cout << "Connecting to master at " << masterHost<< ":" << masterPort << std::endl;
             struct  sockaddr_in replica_addr;
             replica_addr.sin_family=AF_INET;
             replica_addr.sin_addr.s_addr=inet_addr(masterHost.c_str());
             replica_addr.sin_port=htons(masterPort);
-
             int master_fd = socket(AF_INET, SOCK_STREAM,0);
             connect(master_fd, (struct sockaddr *)&replica_addr,sizeof(replica_addr));
             char recv_buf[BUFFER_SIZE];
             std::memset(recv_buf, 0, sizeof(recv_buf));
-
             std::string ping{"*1\r\n$4\r\nping\r\n"};
             send(master_fd,ping.data(),ping.size(),0);
             ssize_t recv_bytes = recv(master_fd, recv_buf, BUFFER_SIZE, 0);
@@ -435,17 +404,13 @@ int main(int argc, char **argv) {
             recv_bytes = recv(master_fd, recv_buf, BUFFER_SIZE, 0);
             std::string ok = "+OK\r\n";
             send(master_fd,ok.data(),ok.size(),0);
-
-
             close(master_fd);
         }
     }
-
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     // std::cout << "Logs from your program will appear here!\n";
     // Uncomment this block to pass the first stage
     //
-
     
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
@@ -479,9 +444,7 @@ int main(int argc, char **argv) {
     //
     struct sockaddr_in client_addr;
     int client_addr_len = sizeof(client_addr);
-
     std::cout << "Waiting for a client to connect...\n";
-
     int n_connections = 0;
     do {
     int client_fd;
