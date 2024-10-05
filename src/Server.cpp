@@ -25,6 +25,7 @@ bool handshake_complete  = false;
 int count =0;
 std::string dir;
 std::string dbfilename;
+static int CntReplica =0;
 
 std::vector<std::string> splitRedisCommand(std::string input, std::string separator, int separatorLength) {
   std::vector<std::string> res;
@@ -507,11 +508,12 @@ for(int i = 0; i < string_buf.size(); i++)
           std::string resp = "+FULLRESYNC " + master_repl_id + " " + std::to_string(master_repl_offset) + "\r\n";
           send(client_fd, resp.data(), resp.size(), 0);
           send_rdb_file_data(client_fd, hex_empty_rdb);
+          CntReplica++;
         }
       }
       else if (command == "wait")
       {
-        std::string resp = ":0\r\n";
+        std::string resp = ":"+std::to_string(CntReplica)+"\r\n";
         send(client_fd,resp.data(),resp.size(),0);
         int timeout = stoi(parsed_in[2]);
         // this_thread::sleep_for(chronos::duration::milliseconds(timeout));
