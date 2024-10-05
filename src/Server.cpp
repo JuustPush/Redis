@@ -509,6 +509,13 @@ for(int i = 0; i < string_buf.size(); i++)
           send_rdb_file_data(client_fd, hex_empty_rdb);
         }
       }
+      else if (command == "wait")
+      {
+        std::string resp = ":0\r\n";
+        send(client_fd,resp.data(),resp.size(),0);
+        int timeout = stoi(parsed_in[2]);
+        // this_thread::sleep_for(chronos::duration::milliseconds(timeout));
+      }
       
     }
     for (int i = 0; i < sizeof(client_command); i++)
