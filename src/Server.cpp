@@ -2,46 +2,29 @@
 #include <cstdlib>
 #include <string>
 #include <cstring>
-#include <thread>
-#include <vector>
-#include <string>
-#include <unordered_map>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <chrono>
+#include <vector>
 #include <map>
+#include <chrono>
+#include <thread>
+#include <pthread.h>
 #include <fstream>
 #include <cassert>
-#include <sstream>
-#include <mutex>
-using namespace std::string_view_literals;
-
-
-
-struct Value {
-    std::string val;
-    std::chrono::time_point<std::chrono::system_clock> expiry;
-    bool IsExpired() const noexcept {
-        auto now = std::chrono::system_clock::now();
-        std::cout<<now<<" "<<expiry;
-        return now > expiry;
-    }
-};
-
- std::string dir;
- std::string dbfilename;
-// std::map<std::string,std::string> m_mapKeyValues;
-// std::map<std::string, timeval> m_mapKeyTimeouts;
-std::map<std::string, Value> kVars;
-void addDefault(){
-    kVars.emplace(std::string("foo"), Value{std::string("123"),  std::chrono::time_point<std::chrono::system_clock>::max()});
-    kVars.emplace(std::string("bar"), Value{std::string("456"),  std::chrono::time_point<std::chrono::system_clock>::max()});
-    kVars.emplace(std::string("baz"), Value{std::string("789"),  std::chrono::time_point<std::chrono::system_clock>::max()});
-}
-
+std::map<std::string, std::string> kv;
+std::map<std::string, int64_t> valid_until_ts;
+std::string hex_empty_rdb = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
+int master_port = -1; // -1 -> master
+std::string master_repl_id = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
+int master_repl_offset = 0;
+std::vector<int> replicas_fd;
+bool handshake_complete  = false;
+int count =0;
+std::string dir;
+std::string dbfilename;
 
 std::vector<std::string> splitRedisCommand(std::string input, std::string separator, int separatorLength) {
   std::vector<std::string> res;
@@ -239,9 +222,11 @@ void initializeKeyValues(){
         std::string value = read_byte_to_string(rdb);
 
         std::chrono::_V2::system_clock::time_point expiry_time;
-        if (expire_time_ms > 0) expiry_time = std::chrono::system_clock::from_time_t((expire_time_ms/1000)); //std::chrono::milliseconds(expire_time_ms) 
-        else expiry_time = std::chrono::time_point<std::chrono::system_clock>::max();
-        kVars.emplace(std::string(key), Value{std::string(value), expiry_time});
+        // if (expire_time_ms > 0) expiry_time = std::chrono::system_clock::from_time_t((expire_time_ms/1000)); //std::chrono::milliseconds(expire_time_ms) 
+        // else expiry_time = std::chrono::time_point<std::chrono::system_clock>::max();
+        kv[key]=value;
+        if (expire_time_ms > 0) valid_until_ts[key]=expire_time_ms;
+        //kVars.emplace(std::string(key), Value{std::string(value), expiry_time});
         
     }
     rdb.close();
@@ -252,132 +237,217 @@ std::unique_ptr<std::vector<std::string>> getAllKeys(const std::string_view& reg
 {
     auto result{std::make_unique<std::vector<std::string>>()};
     std::cout << "Got regex: " << regex << std::endl;
-	for (const auto& key: kVars)
+	for (const auto& key: kv)
 	{
-        if (key.first != "foo" && key.first != "bar" && key.first != "baz")
+    std::cout<<key.first<<std::endl;
 		    result->push_back(key.first);
 	}
 	return result;
 }
 
-bool kIsMaster = true;
-int kMasterFd = -1;
-std::vector<int> kReplicaFds;
-thread_local char kBuf[128];
 
-std::mutex kMtx;
-std::string_view parse_string(std::string_view& input) {
-    auto pos = input.find('$');
-    if (pos == input.npos) return "";
-    size_t count = 0;
-    while (pos < input.size() && ::isdigit(input[++pos])) {
-        count = count * 10 + (input[pos] - '0');
-    }
-    auto str = input.substr(pos + 2, count);
-    input.remove_prefix(pos + 2);
-    return str;
-}
-bool is_cmd(std::string_view cmd, std::string_view cmd_str) {
-    if (cmd.size() != cmd_str.size()) return false;
-    for (size_t i = 0; i < cmd.size(); ++i) {
-        if (::toupper(cmd[i]) != ::toupper(cmd_str[i])) return false;
-    }
-    return true;
-}
-std::string encode_bulk_str(std::string_view msg) {
-    auto encoded_msg = std::string("$");
-    encoded_msg += std::to_string(msg.size()) + "\r\n";
-    encoded_msg += msg;
-    encoded_msg += "\r\n";
-    return encoded_msg;
-}
-void handle_connection(int fd) {
-    std::cout<<"current fd "<<fd<<std::endl;
 
- while (auto ret = read(fd, kBuf, sizeof kBuf)) {
-        if (ret == 0 || ret == -1) break;
-        const auto raw_input = std::string_view(kBuf, ret);
-        auto input = raw_input;
-        auto cmd = parse_string(input);
-        if (!kReplicaFds.empty() && is_cmd(cmd, "SET"sv)) {
-            for (const auto rfd : kReplicaFds) {
-                send(rfd, raw_input.data(), raw_input.size(), 0);
-            }
+void recv_repl_id(int master_fd) 
+{
+  // can be extended to read the repl_id and repl_offset value
+  char* buf;
+  while(buf[0] != '\n') 
+  {
+    recv(master_fd, buf, 1, 0);
+  }
+}
+void recv_rdb_file(int master_fd) 
+{
+  char buf[1024];
+  bool size_determined = false;
+  int size = 0;
+  while(!size_determined) 
+  {
+    recv(master_fd, buf, 1, 0);
+    std::cout << buf[0] <<"\n";
+    if(buf[0] == '$' || buf[0] == '\r') 
+      continue;
+    else if (buf[0] == '\n')
+      size_determined = true;
+    else 
+      size = size * 10 + (buf[0] - '0');
+  }
+  std::cout << size << "\n";
+  int bytes_recvd = 0;
+  while(bytes_recvd < size)
+  {
+    recv(master_fd, buf, 1, 0);
+    std::cout << buf[0];
+    bytes_recvd++;
+  }
+}
+int64_t get_current_timestamp()
+{
+  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+std::string hex_to_string(const std::string &hex) {
+    std::string result;
+    for(int i=0; i<hex.length(); i+=2) {
+        unsigned int byte;
+        std::stringstream ss;
+        ss << std::hex << hex.substr(i, 2);
+        ss >> byte;
+        result.push_back(static_cast<char>(byte));
+    }
+    return result;
+}
+std::vector<std::string> input_tokenizer(std::string buf)
+{
+  std::vector<std::string> in_tokens;
+  std::string curr_arr_el = "";
+  for (int i = 0; i < buf.size(); i++)
+  {
+    if (buf[i] != '\r' && buf[i] != '\n')
+      curr_arr_el += buf[i];
+    else if (buf[i] == '\n')
+    {
+      in_tokens.push_back(curr_arr_el);
+      curr_arr_el = "";
+    }
+  }
+  return in_tokens;
+}
+std::vector<std::string> protocol_parser(std::string buf)
+{
+  int len = buf.size();
+  std::vector<std::string> parse_result;
+  std::vector<std::string> in_tokens = input_tokenizer(buf);
+  int total_no_of_out_tokens;
+  int max_size_of_next_token;
+  for (auto s : in_tokens)
+  {
+    if (s[0] == '*' && s.size()>1)
+      total_no_of_out_tokens = stoi(s.substr(1));
+    else if (s[0] == '$')
+      max_size_of_next_token = stoi(s.substr(1));
+    else
+    {
+      if (s.size() != max_size_of_next_token)
+        std::cerr << "Invalid command\n";
+      parse_result.push_back(s);
+    }
+    if(parse_result.size() == total_no_of_out_tokens) 
+      break;
+  }
+  if (parse_result.size() != total_no_of_out_tokens)
+    std::cerr << "Invalid command\n";
+  return parse_result;
+}
+std::string token_to_resp_bulk(std::string token)
+{
+  if (token.empty())
+    return "$-1\r\n";
+  return "$" + std::to_string(token.size()) + "\r\n" + token + "\r\n";
+}
+void send_string_wrap(int client_fd, std::string msg)
+{
+  std::string resp_bulk = token_to_resp_bulk(msg);
+  // std::cout << resp_bulk << "\n";
+  char *buf = resp_bulk.data();
+  send(client_fd, buf, resp_bulk.size(), 0);
+}
+void send_string_vector_wrap(int client_fd, std::vector<std::string> msgs)
+{
+  std::string combined_resp = "*" + std::to_string(msgs.size()) + "\r\n";
+  for (std::string str : msgs)
+  {
+    combined_resp += token_to_resp_bulk(str);
+  }
+  char *buf = combined_resp.data();
+  send(client_fd, buf, combined_resp.size(), 0);
+}
+void send_rdb_file_data(int client_fd, std::string hex)
+{
+  std::string bin = hex_to_string(hex);
+  std::string resp = "$" + std::to_string(bin.size()) + "\r\n" + bin;
+  std::cout << resp << "\n";
+  char *buf = resp.data();
+  send(client_fd, buf, resp.size(), 0);
+}
+void handle_client(int client_fd)
+{
+  char client_command[1024] = {'\0'};
+  while (recv(client_fd, client_command, sizeof(client_command), 0) > 0)
+  {
+    std::string string_buf{client_command};
+    std::cout << string_buf << "\n";
+    for (int i = 0; i < string_buf.size(); i++)
+      string_buf[i] = tolower(string_buf[i]);
+      std::vector<int> resp_arr_starting_idx;
+for(int i = 0; i < string_buf.size(); i++) 
+    {if(string_buf[i] == '*') 
+        resp_arr_starting_idx.push_back(i);
+    }
+     if(resp_arr_starting_idx.empty())
+      resp_arr_starting_idx.push_back(0);
+    for(int i = 0; i < resp_arr_starting_idx.size(); i++) 
+    {
+       int resp_arr_len;
+      if(i != resp_arr_starting_idx.size() - 1)
+      {
+        resp_arr_len = resp_arr_starting_idx[i + 1] - resp_arr_starting_idx[i];
+      }
+      else 
+      {
+        resp_arr_len = string_buf.size() - resp_arr_starting_idx[i];
+      }
+      count+=resp_arr_len;
+      std::cout << resp_arr_starting_idx[i] << " " << resp_arr_len << "\n";
+      auto parsed_in = protocol_parser(string_buf.substr(resp_arr_starting_idx[i], resp_arr_len));
+      std::string command = parsed_in[0];
+      std::cout<<"current command - "<<command<<std::endl;
+ 
+      if (command == "ping")
+      {
+        if(master_port==-1)
+        send_string_wrap(client_fd, "PONG");
+      }
+       else if (command == "echo")
+      {
+        send_string_wrap(client_fd, parsed_in[1]);
+      }
+      else if (command == "set")
+      {
+         std::string key = parsed_in[1];
+        std::string value = parsed_in[2];
+        kv[key] = value;
+        if (parsed_in.size() > 3)
+        {
+           if (parsed_in[3] == "px")
+          {
+            valid_until_ts[key] = get_current_timestamp() + (int64_t)stoi(parsed_in[4]);
+          }
         }
-        if (is_cmd(cmd, "PING"sv)) {
-            send(fd, "+PONG\r\n", 7, 0);
-        } else if (is_cmd(cmd, "ECHO"sv)) {
-            auto msg = encode_bulk_str(parse_string(input));
-            send(fd, msg.data(), msg.size(), 0);
-        } else if (is_cmd(cmd, "SET"sv)) {
-            auto key = parse_string(input);
-            auto value = parse_string(input);
-            auto expiry_cmd = parse_string(input);
-            auto expiry_time = std::chrono::time_point<std::chrono::system_clock>::max();
-            if (!expiry_cmd.empty() && is_cmd(expiry_cmd, "PX"sv)) {
-                auto ms_str = parse_string(input);
-                int ms = 0;
-                for (char c : ms_str) {
-                    ms = ms * 10 + (c - '0');
-                }
-                expiry_time = std::chrono::system_clock::now() + std::chrono::milliseconds(ms);
-            }
- 	        std::cerr << "SET -> " << key << "\n";
-            {
-                auto _ = std::unique_lock(kMtx);
-                kVars.emplace(std::string(key), Value{std::string(value), expiry_time});
-                
-            }
-            if (fd != kMasterFd) send(fd, "+OK\r\n", 5, 0);
-        } else if (is_cmd(cmd, "GET"sv)) {
-                auto key = parse_string(input);
-            for (int i=0;i<100;i++){
-                
-                auto _ = std::unique_lock(kMtx);
-                auto it = kVars.find(std::string(key));
-                std::cerr << "-> " << key << "\n";
-            if (it == kVars.end() || it->second.IsExpired()) {
-                std::cerr << "-> " << std::boolalpha << (it == kVars.end()) << "\n";
-                std::cerr << "-> NO\n";
-                if (it !=kVars.end()) kVars.erase(it);
-                send(fd, "$-1\r\n", 5, 0);
-                break;
+         if(master_port == -1) 
+        { send_string_wrap(client_fd, "OK");
+        for(auto fd : replicas_fd)
+          {
+            std::cout << fd << "propagated\n";
+            send_string_vector_wrap(fd, parsed_in);
+          }
+        }
+      }
+      else if (command == "keys")
+      {
+        auto ptr = getAllKeys("*");
+          std::vector<std::string>* rgx = ptr.get();
+          std::string response="*"+std::to_string(rgx->size())+"\r\n";
 
-            } else {
-                std::cerr << "-> " << it->second.val << "\n";
-                auto msg = encode_bulk_str(it->second.val);
-                send(fd, msg.data(), msg.size(), 0);
-                break;
-            }
-            }
-            
-        } else if (is_cmd(cmd, "INFO"sv)) {
-            auto msg = encode_bulk_str(kIsMaster ? "role:master\nmaster_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\nmaster_repl_offset:0"sv : "role:slave"sv);
-            send(fd, msg.data(), msg.size(), 0);
-        } else if (raw_input == "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n") {
-            send(fd, "+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n", 56, 0);
-            send(fd, "$88\r\n\x52\x45\x44\x49\x53\x30\x30\x31\x31\xfa\x09\x72\x65\x64\x69\x73\x2d\x76\x65\x72\x05\x37\x2e\x32\x2e\x30\xfa\x0a\x72\x65\x64\x69\x73\x2d\x62\x69\x74\x73\xc0\x40\xfa\x05\x63\x74\x69\x6d\x65\xc2\x6d\x08\xbc\x65\xfa\x08\x75\x73\x65\x64\x2d\x6d\x65\x6d\xc2\xb0\xc4\x10\x00\xfa\x08\x61\x6f\x66\x2d\x62\x61\x73\x65\xc0\x00\xff\xf0\x6e\x3b\xfe\xc0\xff\x5a\xa2", 93, 0);
-            kReplicaFds.push_back(fd);
-        } else if (is_cmd(cmd, "REPLCONF"sv)) {
-            auto info = parse_string(input);
-            std::cout<<info<<std::endl;
-            if (info == "GETACK"sv) send(fd,"*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n",34,0);
-            else send(fd, "+OK\r\n", 5, 0);
-        } else if (is_cmd(cmd,"KEYS"sv)){
-            auto key = parse_string(input);
-            auto ptr = getAllKeys(key);
-            std::vector<std::string>* rgx = ptr.get();
-            std::string response="*"+std::to_string(rgx->size())+"\r\n";
-            
-            for (const auto& m : *rgx){
-                response+="$"+std::to_string(m.length())+"\r\n"+m+"\r\n";
-                std::cout<<response<<std::endl;
-                
-            }
-            send(fd,response.data(),response.length(),0);
-        } else if (is_cmd(cmd,"CONFIG"sv)){
-            parse_string(input);
-            auto info = parse_string(input);
+          
+          for (const auto& m : *rgx){
+              response+="$"+std::to_string(m.length())+"\r\n"+m+"\r\n";
+              std::cout<<response<<std::endl;
+              
+          }
+          send(client_fd,response.data(),response.length(),0);
+      }
+      else if (command == "config"){
+            std::string info = parsed_in[2];
             std::string response="*2\r\n";
             if (info=="dir"){
                 response+="$3\r\ndir\r\n";
@@ -387,29 +457,106 @@ void handle_connection(int fd) {
                 response += "$10\r\ndbfilename\r\n";
                 response += "$" + std::to_string(dbfilename.size()) + "\r\n" + dbfilename + "\r\n";
             }
-            send(fd,response.data(),response.length(),0);
+            send(client_fd,response.data(),response.length(),0);
         } 
-    }
-    close(fd);
-    
-}
 
-int main(int argc, char **argv) {
-    uint16_t port = 6379;
-    std::string_view master_host, master_port;
-    addDefault();
-    if (argc > 1) {
+
+      else if (command == "get")
+      {
+        std::string key = parsed_in[1];
+        if (!kv.contains(key) || (valid_until_ts.contains(key) && get_current_timestamp() > valid_until_ts[key]))
+          send_string_wrap(client_fd, "");
+        else
+        send_string_wrap(client_fd, kv[key]);
+      }
+      else if (command == "info")
+      {
+        int args = parsed_in.size() - 1;
+         if (args == 1 && parsed_in[1] == "replication")
+        {
+          if (master_port == -1)
+          {
+            std::string resp = "role:master\r\nmaster_replid:" + master_repl_id + "\r\nmaster_repl_offset:" + std::to_string(master_repl_offset);
+            send_string_wrap(client_fd, resp);
+          }
+          else
+            send_string_wrap(client_fd, "role:slave");
+        }
+      }
+      else if (command == "replconf")
+      {
+        if(master_port != -1 && handshake_complete && parsed_in[1] == "getack") 
+        {
+          std::cout << "Hello there!";
+          send_string_vector_wrap(client_fd, {"REPLCONF", "ACK", std::to_string(count-resp_arr_len)});
+        }
+        else 
+        {
+          send(client_fd, "+OK\r\n", 5, 0);
+          if(replicas_fd.empty() || replicas_fd.back() != client_fd)
+            replicas_fd.push_back(client_fd);
+        }
+      
+      }
+      else if (command == "psync")
+      {
+        std::string recv_master_id = parsed_in[1];
+        int recv_master_offset = stoi(parsed_in[2]);
+        if (recv_master_id == "?" && recv_master_offset == -1)
+        {
+          std::string resp = "+FULLRESYNC " + master_repl_id + " " + std::to_string(master_repl_offset) + "\r\n";
+          send(client_fd, resp.data(), resp.size(), 0);
+          send_rdb_file_data(client_fd, hex_empty_rdb);
+        }
+      }
+      
+    }
+    for (int i = 0; i < sizeof(client_command); i++)
+      client_command[i] = '\0';
+  }
+  close(client_fd);
+}
+int main(int argc, char **argv)
+{
+  // You can use print statements as follows for debugging, they'll be visible when running tests.
+  std::cout << "Logs from your program will appear here!\n";
+  // std::cout << "Protocol parser test\n";
+  // auto test_result = protocol_parser("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
+  // for (auto s : test_result)
+  //   std::cout << s << "\n";
+  int self_port = 6379;
+  if (argc > 1)
+  {
+    if (strcmp(argv[1], "--port") == 0)
+    {
+      std::string port_in{argv[2]};
+      self_port = stoi(port_in);
+    }
+  }
+    // Uncomment this block to pass the first stage
+  //
+  int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (server_fd < 0)
+  {
+    std::cerr << "Failed to create server socket\n";
+    return 1;
+  }
+ int master_fd;
+ if(master_port == -1) 
+    {
+       if (argc > 1) {
         for (int i = 1; i < argc; ++i) {
             auto cmd = std::string_view(argv[i]);
             if (cmd == "--port") {
-                port = std::stoi(argv[++i]);
+                //port = std::stoi(argv[++i]);
             } else if (cmd == "--replicaof") {
-                auto param = std::string_view(argv[++i]);
+                auto param = std::string(argv[++i]);
                 auto pos = param.find(' ');
-                master_host = param.substr(0, pos);
-                master_port = param.substr(pos + 1);
+                //master_host = param.substr(0, pos);
+                //std::string strPort=param.substr(pos + 1);
+                master_port = std::stoi(param.substr(pos + 1));
                 argv[i][pos] = '\0';
-                kIsMaster = false;
+                //kIsMaster = false;
             } else if (cmd == "--dir"){
                 dir = argv[++i];
                 continue;
@@ -419,69 +566,74 @@ int main(int argc, char **argv) {
             }
         }
     }
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) {
-        std::cerr << "Failed to create server socket\n";
-        return 1;
-    }
-    // Since the tester restarts your program quite often, setting SO_REUSEADDR
-    // ensures that we don't run into 'Address already in use' errors
-    int reuse = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-        std::cerr << "setsockopt failed\n";
-        return 1;
-    }
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(port);
-    if (bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) != 0) {
-        std::cerr << "Failed to bind to port 6379\n";
-        return 1;
-    }
-    int connection_backlog = 5;
-    if (listen(server_fd, connection_backlog) != 0) {
-        std::cerr << "listen failed\n";
-        return 1;
-    }
-    struct sockaddr_in client_addr;
-    int client_addr_len = sizeof(client_addr);
-    std::cout << "Waiting for a client to connect...\n";
-    std::vector<std::thread> threads;
-    if (!kIsMaster) {
-kMasterFd = socket(AF_INET, SOCK_STREAM, 0);
-        if (kMasterFd < 0) {
-            std::cerr << "Failed to create replica socket\n";
-            return 1;
+       if (master_port != -1)
+      {
+          master_fd = socket(AF_INET, SOCK_STREAM, 0);
+           struct sockaddr_in master_addr;
+          master_addr.sin_family = AF_INET;
+          master_addr.sin_port = htons(master_port);
+          master_addr.sin_addr.s_addr = INADDR_ANY;
+          if (connect(master_fd, (struct sockaddr *)&master_addr, sizeof(master_addr)) == -1)
+          {
+            std::cerr << "Replica failed to connect to master\n";
+          }
+          char buf[1024] = {'\0'};
+          send_string_vector_wrap(master_fd, {"ping"});
+          recv(master_fd, buf, sizeof(buf), 0);
+          memset(buf, 0, 1024);
+          send_string_vector_wrap(master_fd, {"REPLCONF", "listening-port", std::to_string(self_port)});
+          recv(master_fd, buf, sizeof(buf), 0);
+          memset(buf, 0, 1024);
+          send_string_vector_wrap(master_fd, {"REPLCONF", "capa", "psync2"});
+          recv(master_fd, buf, sizeof(buf), 0);
+          memset(buf, 0, 1024);
+          send_string_vector_wrap(master_fd, {"PSYNC", "?", "-1"});
+          recv_repl_id(master_fd);
+          recv_rdb_file(master_fd);
+          memset(buf, 0, 1024);
+          handshake_complete = true;
+ std::thread t(handle_client, master_fd);
+          t.detach();
         }
-        struct addrinfo* master_addr;
-        if (getaddrinfo(master_host.data(), master_port.data(), nullptr, &master_addr) != 0) {
-            std::cerr << "Failed to parse master addr\n";
-            return 1;
-        }
- if (connect(kMasterFd, master_addr->ai_addr, master_addr->ai_addrlen) != 0) {
-            std::cerr << "Failed to connect master server\n";
-            return 1;
-        }
-        freeaddrinfo(master_addr);
-        send(kMasterFd, "*1\r\n$4\r\nPING\r\n", 14, 0);
-        read(kMasterFd, kBuf, sizeof kBuf);
-        auto msg = std::string("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n");
-        msg += encode_bulk_str(std::to_string(port));
-        send(kMasterFd, msg.data(), msg.size(), 0);
-        read(kMasterFd, kBuf, sizeof kBuf);
-        send(kMasterFd, "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n", 40, 0);
-        read(kMasterFd, kBuf, sizeof kBuf);
-        send(kMasterFd, "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n", 30, 0);
-        read(kMasterFd, kBuf, sizeof kBuf);
-        read(kMasterFd, kBuf, sizeof kBuf);
-        threads.emplace_back(handle_connection, kMasterFd);
     }
- while (true) {
-        auto client_fd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-        std::cout << "Client connected\n";
-        threads.emplace_back(handle_connection, client_fd);
-    }
-    close(server_fd);
-    return 0;
+// Since the tester restarts your program quite often, setting SO_REUSEADDR
+  // ensures that we don't run into 'Address already in use' errors
+  int reuse = 1;
+  if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
+  {
+    std::cerr << "setsockopt failed\n";
+    return 1;
+  }
+  struct sockaddr_in server_addr;
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_addr.s_addr = INADDR_ANY;
+  server_addr.sin_port = htons(self_port);
+  if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) != 0)
+  {
+    std::cerr << "Failed to bind to port 6379\n";
+    return 1;
+  }
+  int connection_backlog = 5;
+  if (listen(server_fd, connection_backlog) != 0)
+  {
+    std::cerr << "listen failed\n";
+    return 1;
+  }
+  struct sockaddr_in client_addr;
+  int client_addr_len = sizeof(client_addr);
+  std::cout << "Waiting for a client to connect...\n";
+  std::vector<std::thread> threads;
+  int client_fd;
+  while (true)
+  {
+    client_fd = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_len);
+    std::cout << "Client connected\n";
+  threads.push_back(std::thread(handle_client, client_fd));
+  }
+  for(auto &t : threads) 
+  {
+    t.join();
+  }
+  close(server_fd);
+  return 0;
 }
