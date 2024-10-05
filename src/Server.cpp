@@ -237,18 +237,7 @@ void initializeKeyValues(){
         }
         std::string key = read_byte_to_string(rdb);
         std::string value = read_byte_to_string(rdb);
-        // timeval t;
-        // gettimeofday(&t,NULL);
-        // if (expire_time_s == 0 || t.tv_sec <expire_time_s){
-        //     std::cout << "Adding " << key << " -> " << value << std::endl;
-        //     m_mapKeyValues[key] = value;
-        //     if (expire_time_ms != 0)
-		// 	{
-		// 		t.tv_sec = expire_time_ms / 1000;
-		// 		t.tv_usec = (expire_time_ms % 1000) * 1000;
-		// 		m_mapKeyTimeouts[key] = t;
-		// 	}
-		//}
+
         std::chrono::_V2::system_clock::time_point expiry_time;
         if (expire_time_ms > 0) expiry_time = std::chrono::system_clock::from_time_t((expire_time_ms/1000)); //std::chrono::milliseconds(expire_time_ms) 
         else expiry_time = std::chrono::time_point<std::chrono::system_clock>::max();
@@ -257,16 +246,7 @@ void initializeKeyValues(){
     }
     rdb.close();
 }
-// std::unique_ptr<std::vector<std::string>> getAllKeys(const std::string& regex)
-// {
-//     auto result{std::make_unique<std::vector<std::string>>()};
-//     std::cout << "Got regex: " << regex << std::endl;
-// 	for (const auto& key: m_mapKeyValues)
-// 	{
-// 		result->push_back(key.first);
-// 	}
-// 	return result;
-// }
+
 
 std::unique_ptr<std::vector<std::string>> getAllKeys(const std::string_view& regex)
 {
@@ -350,7 +330,6 @@ void handle_connection(int fd) {
             }
             if (fd != kMasterFd) send(fd, "+OK\r\n", 5, 0);
         } else if (is_cmd(cmd, "GET"sv)) {
-            //std::this_thread::sleep_for(std::chrono::seconds(5)); 
                 auto key = parse_string(input);
             for (int i=0;i<100;i++){
                 
@@ -380,7 +359,10 @@ void handle_connection(int fd) {
             send(fd, "$88\r\n\x52\x45\x44\x49\x53\x30\x30\x31\x31\xfa\x09\x72\x65\x64\x69\x73\x2d\x76\x65\x72\x05\x37\x2e\x32\x2e\x30\xfa\x0a\x72\x65\x64\x69\x73\x2d\x62\x69\x74\x73\xc0\x40\xfa\x05\x63\x74\x69\x6d\x65\xc2\x6d\x08\xbc\x65\xfa\x08\x75\x73\x65\x64\x2d\x6d\x65\x6d\xc2\xb0\xc4\x10\x00\xfa\x08\x61\x6f\x66\x2d\x62\x61\x73\x65\xc0\x00\xff\xf0\x6e\x3b\xfe\xc0\xff\x5a\xa2", 93, 0);
             kReplicaFds.push_back(fd);
         } else if (is_cmd(cmd, "REPLCONF"sv)) {
-            send(fd, "+OK\r\n", 5, 0);
+            auto info = parse_string(input);
+            std::cout<<info<<std::endl;
+            if (info == "GETACK"sv) send(fd,"*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n",34,0);
+            else send(fd, "+OK\r\n", 5, 0);
         } else if (is_cmd(cmd,"KEYS"sv)){
             auto key = parse_string(input);
             auto ptr = getAllKeys(key);
@@ -406,9 +388,8 @@ void handle_connection(int fd) {
                 response += "$" + std::to_string(dbfilename.size()) + "\r\n" + dbfilename + "\r\n";
             }
             send(fd,response.data(),response.length(),0);
-        }
+        } 
     }
-//kVars.clear();
     close(fd);
     
 }
@@ -417,7 +398,6 @@ int main(int argc, char **argv) {
     uint16_t port = 6379;
     std::string_view master_host, master_port;
     addDefault();
-    //initializeKeyValues();
     if (argc > 1) {
         for (int i = 1; i < argc; ++i) {
             auto cmd = std::string_view(argv[i]);
