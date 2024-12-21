@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.13)
 
 project(redis-starter-cpp)
 
+include_directories(${PROJECT_SOURCE_DIR}/src)
+
 file(GLOB_RECURSE SOURCE_FILES src/*.cpp)
 
 set(CMAKE_CXX_STANDARD 23) # Enable the C++23 standard
