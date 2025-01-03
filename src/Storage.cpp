@@ -3,6 +3,18 @@
 #include <ctime>
 #include <limits>
 #include <optional>
+#include <stdexcept>
+
+bool isInteger(const std::string& str) {
+    try {
+        std::stoi(str); // или std::stol, std::stoll
+        return true;
+    } catch (const std::invalid_argument& e) {
+        return false;
+    } catch (const std::out_of_range& e) {
+        return false;
+    }
+}
 
 
 std::optional<std::string> KVStorage::get(const std::string &k) const {
@@ -28,10 +40,16 @@ std::optional<std::string> KVStorage::incr(const std::string &k) const {
 
     return "1";
   }
-  int val = std::stoi(it->second.value);
-  val++;
-  it->second.value=std::to_string(val);
-  return it->second.value;
+  else if (isInteger(it->second.value)){
+    int val = std::stoi(it->second.value);
+    val++;
+    it->second.value=std::to_string(val);
+    return it->second.value;
+  }
+  else {
+    return "error"; 
+  }
+  
 }
 
 std::vector<std::string> KVStorage::keys() const {

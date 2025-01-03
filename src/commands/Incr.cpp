@@ -14,6 +14,7 @@ std::optional<std::string> Incr::inner_handle(const std::span<const std::string>
   if (ret == std::nullopt) {
     return std::nullopt;
   }
+  else if (ret.value()=="error") return "-ERR value is not an integer or out of range\r\n";
   return Parser::encodeInt(ret.value());
 }
 
