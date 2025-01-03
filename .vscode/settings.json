@@ -75,6 +75,7 @@
         "complex": "cpp",
         "shared_mutex": "cpp",
         "typeindex": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "bitset": "cpp"
     }
 }

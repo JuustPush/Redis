@@ -73,3 +73,7 @@ std::string Parser::encodeRespArray(const std::vector<std::string> arr)
   }
   return result;
 }
+
+std::string Parser::encodeInt(const std::string &str){
+  return ":" + str + "\r\n";
+}

@@ -12,4 +12,6 @@ public:
     static std::string encodeBulkString(const std::string& str);
 
     static std::string encodeRespArray(const std::vector<std::string>);
+
+    static std::string encodeInt(const std::string& str);
 };

@@ -18,6 +18,18 @@ std::optional<std::string> KVStorage::get(const std::string &k) const {
   return it->second.value;
 }
 
+std::optional<std::string> KVStorage::incr(const std::string &k) const {
+  auto it = data_.find(k);
+
+  if (it == data_.end()) {
+    return std::nullopt;
+  }
+  int val = std::stoi(it->second.value);
+  val++;
+  it->second.value=std::to_string(val);
+  return it->second.value;
+}
+
 std::vector<std::string> KVStorage::keys() const {
   std::vector<std::string> res;
   for (auto &d : data_){
