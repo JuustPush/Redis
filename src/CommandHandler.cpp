@@ -15,6 +15,7 @@
 #include "commands/Keys.h"
 #include "commands/Config.h"
 #include "commands/Incr.h"
+#include "commands/Multi.h"
 #include <algorithm>
 #include <iostream>
 #include <memory>
@@ -38,6 +39,7 @@ CommandHandler::CommandHandler(
   command_map_.emplace("keys", std::make_unique<commands::Keys>(data_));
   command_map_.emplace("config", std::make_unique<commands::Config>(data_));
   command_map_.emplace("incr", std::make_unique<commands::Incr>(data_));
+  command_map_.emplace("multi",std::make_unique<commands::Multi>(data_));
 }
 
 void CommandHandler::handle_raw_command(const std::string &raw_command) {
