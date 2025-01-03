@@ -22,7 +22,11 @@ std::optional<std::string> KVStorage::incr(const std::string &k) const {
   auto it = data_.find(k);
 
   if (it == data_.end()) {
-    return std::nullopt;
+    uint64_t expired_ts_ms = std::numeric_limits<uint64_t>::max();
+    data_.insert_or_assign(std::move(k),
+                         ExpiringValue{std::move("1"), expired_ts_ms});
+
+    return "1";
   }
   int val = std::stoi(it->second.value);
   val++;
