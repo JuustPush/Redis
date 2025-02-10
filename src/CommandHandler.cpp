@@ -67,7 +67,7 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
     //   std::cout << "Incorrect command, command = " << main_command << "\n";
     //   return;
     // }
-    std::queue<std::pair<std::string,std::string>> q;
+    std::queue<std::vector<std::string>> q;
     std::cout << "Can go here first\n";
     std::unique_ptr<commands::Command>::pointer command;
     if (it != command_map_.end()) command = it->second.get();
@@ -75,6 +75,7 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
     if (main_command=="multi"){
       multi=true;
       session_->write("+OK\r\n", def_call_back);
+      continue;
     }
     else if (main_command == "exec"){
       
@@ -93,7 +94,14 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
     }
 
     if (multi){
-
+      if (command_list[0]=="GET"){
+        session_->write("$-1\r\n", def_call_back);
+      }
+      else {
+        q.push(command_list);
+        session_->write("+QUEUED\r\n", def_call_back);
+        std::cout<<command_list[0]<<" "<<command_list[1]<<std::endl;
+      }
     }
     if (!multi){
       command->handle(command_list, session_);
