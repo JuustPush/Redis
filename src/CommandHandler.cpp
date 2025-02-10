@@ -29,7 +29,7 @@ void def_call_back(const asio::error_code &error_code,
     std::cout << "error = " << error_code.message() << "\n";
   }
 }
-
+bool multi = false;
 
 CommandHandler::CommandHandler(
     std::shared_ptr<KVStorage> data,
@@ -71,19 +71,25 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
     std::cout << "Can go here first\n";
     std::unique_ptr<commands::Command>::pointer command;
     if (it != command_map_.end()) command = it->second.get();
-    bool multi = false;
+    
     if (main_command=="multi"){
       multi=true;
       session_->write("+OK\r\n", def_call_back);
     }
     else if (main_command == "exec"){
-      multi=false;
+      
       std::cout<<"q empty? "<<q.empty()<<std::endl;
-      if (q.empty()){
+      std::cout<<"multi? "<<multi<<std::endl;
+      if (q.empty() && multi == false){
         std::cout<<"test queue empty"<<std::endl;
         session_->write("-ERR EXEC without MULTI\r\n", def_call_back);
-        
       }
+      else if (q.empty()) {
+        session_->write("*0\r\n", def_call_back);
+        std::cout<<"Im here"<<std::endl;
+      }
+      multi=false;
+      return;
     }
 
     if (multi){
