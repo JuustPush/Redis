@@ -19,6 +19,17 @@
 #include <algorithm>
 #include <iostream>
 #include <memory>
+#include <queue>
+#include <utility>
+
+
+void def_call_back(const asio::error_code &error_code,
+                                size_t len) {
+  if (error_code) {
+    std::cout << "error = " << error_code.message() << "\n";
+  }
+}
+
 
 CommandHandler::CommandHandler(
     std::shared_ptr<KVStorage> data,
@@ -39,7 +50,7 @@ CommandHandler::CommandHandler(
   command_map_.emplace("keys", std::make_unique<commands::Keys>(data_));
   command_map_.emplace("config", std::make_unique<commands::Config>(data_));
   command_map_.emplace("incr", std::make_unique<commands::Incr>(data_));
-  command_map_.emplace("multi",std::make_unique<commands::Multi>(data_));
+  //command_map_.emplace("multi",std::make_unique<commands::Multi>(data_));
 }
 
 void CommandHandler::handle_raw_command(const std::string &raw_command) {
@@ -52,16 +63,36 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
 
     auto it = command_map_.find(main_command);
     std::cout<<"main command: "<<main_command<<std::endl;
-    if (it == command_map_.end()) {
-      std::cout << "Incorrect command, command = " << main_command << "\n";
-      return;
+    // if (it == command_map_.end() || (main_command != "multi" && main_command != "exec")) {
+    //   std::cout << "Incorrect command, command = " << main_command << "\n";
+    //   return;
+    // }
+    std::queue<std::pair<std::string,std::string>> q;
+    std::cout << "Can go here first\n";
+    std::unique_ptr<commands::Command>::pointer command;
+    if (it != command_map_.end()) command = it->second.get();
+    bool multi = false;
+    if (main_command=="multi"){
+      multi=true;
+      session_->write("+OK\r\n", def_call_back);
+    }
+    else if (main_command == "exec"){
+      multi=false;
+      std::cout<<"q empty? "<<q.empty()<<std::endl;
+      if (q.empty()){
+        std::cout<<"test queue empty"<<std::endl;
+        session_->write("-ERR EXEC without MULTI\r\n", def_call_back);
+        
+      }
     }
 
-    std::cout << "Can go here\n";
-    auto command = it->second.get();
+    if (multi){
 
-  
-    command->handle(command_list, session_);
+    }
+    if (!multi){
+      command->handle(command_list, session_);
+    }
+    
 
     if (session_->is_master_session()) {
       replication_info_->updateOffset(
