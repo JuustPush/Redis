@@ -101,6 +101,17 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
         multi=false;
         return;
       }
+    } 
+    else if (main_command == "discard"){
+      if (multi){
+        session_->write("+OK\r\n", def_call_back);
+        multi=false;
+        q.clear();
+      }
+      else{
+        session_->write("-ERR DISCARD without MULTI\r\n", def_call_back);
+      }
+      return;
     }
 
     else if (multi){
