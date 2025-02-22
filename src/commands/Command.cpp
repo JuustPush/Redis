@@ -9,10 +9,19 @@ namespace commands {
 void Command::handle(const std::vector<std::string> &command_list,
                      Session *session) {
 
+  std::cout<<"before params "<<std::endl;
+  
   std::span<const std::string> params{command_list.begin() + 1,
                                       command_list.end()};
 
+  for (auto &cl : command_list){
+    std::cout<<cl<<std::endl;
+  }
+  //std::cout<<"before inner "<<std::endl;
+
   std::optional<std::string> return_message = inner_handle(params, session);
+
+  //std::cout<<"return message "<<return_message.value()<<std::endl;
 
   write(std::move(return_message), session);
 
