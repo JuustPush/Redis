@@ -6,6 +6,8 @@
 #include <optional>
 #include <vector>
 
+
+bool isInteger(const std::string& str);
 class KVStorage {
 public:
     void set(std::string k, std::string v, uint32_t expiring_time_ms = -1);

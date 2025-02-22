@@ -29,6 +29,19 @@ void def_call_back(const asio::error_code &error_code,
     std::cout << "error = " << error_code.message() << "\n";
   }
 }
+
+// bool isInteger(const std::string& str) {
+//     try {
+//         std::stoi(str); // или std::stol, std::stoll
+//         return true;
+//     } catch (const std::invalid_argument& e) {
+//         return false;
+//     } catch (const std::out_of_range& e) {
+//         return false;
+//     }
+// }
+
+
 bool multi = false;
 std::vector<std::vector<std::string>> q;
 std::unique_ptr<commands::Command>::pointer command;
@@ -156,7 +169,7 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
                    [](const auto c) { return tolower(c); });
       std::cout<<"mc command: "<<mc<<std::endl;
 
-      std::unordered_map<std::string,int> str;
+      std::unordered_map<std::string,std::string> str;
       std::string result="*"+std::to_string(q.size())+"\r\n";
     //   std::string result = "*" + std::to_string(arr.size()) + "\r\n";
     // for (const auto &str : arr)
@@ -181,13 +194,25 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
 
           } else if (mc == "get") {
             //"$" + std::to_string(str.size()) + "\r\n" + str + "\r\n";
-            result+="$" + std::to_string(std::to_string(str[cl[1]]).size())+"\r\n"+std::to_string(str[cl[1]]) + "\r\n";
+            auto tmp = data_->get(cl[1]);
+            result+="$" + std::to_string(tmp.value().size())+"\r\n"+tmp.value() + "\r\n";
           } else if(mc=="incr"){
-            if (str.find(cl[1])!=str.end())
+            auto temp = data_->get(cl[1]);
+            if (temp.has_value())
             {
-              str[cl[1]]++;
-              data_->incr(cl[1]);
-              result+=":"+std::to_string(str[cl[1]])+"\r\n";
+              std::cout<<"str cl 1 is: "<<temp.value()<<std::endl;
+              if (isInteger(temp.value()))
+                {
+                  int tmp = std::stoi(temp.value());
+                  tmp++;
+                  
+                  data_->incr(cl[1]);
+                  result+=":"+std::to_string(tmp)+"\r\n";
+                }
+                else{
+                  result+="-ERR value is not an integer or out of range\r\n";
+                }
+              
             } else{
               str[cl[1]]=1;
               data_->set(std::move(cl[1]), std::move("1"));
