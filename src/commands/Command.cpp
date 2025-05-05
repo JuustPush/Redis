@@ -52,7 +52,7 @@ void Command::write(std::optional<std::string> &&response, Session *session) {
       session->write(kErrorReturn, default_call_back);
     }
   } else {
-    session->start();
+    session->start(0);
   }
 }
 

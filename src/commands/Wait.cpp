@@ -68,7 +68,7 @@ void Wait::handle_wait(
                 write(std::move(response), client_session.get());
               }
               timer->cancel();
-              client_session->start();
+              client_session->start(0);
             });
       });
 }

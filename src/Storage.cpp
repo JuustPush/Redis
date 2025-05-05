@@ -4,6 +4,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <iostream>
 
 bool isInteger(const std::string& str) {
     try {
@@ -20,6 +21,7 @@ bool isInteger(const std::string& str) {
 std::optional<std::string> KVStorage::get(const std::string &k) const {
   auto current_time_ms = get_current_timestamp_ms();
   auto it = data_.find(k);
+  //std::cout<<"data get found "<<it->second.value<<std::endl;
   if (it == data_.end()) {
     return std::nullopt;
   }

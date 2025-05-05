@@ -7,13 +7,18 @@
 #include <asio/ip/tcp.hpp>
 #include <mutex>
 #include <shared_mutex>
+#include <atomic>
 
 using asio::ip::tcp;
+
+#ifdef __cplusplus
+extern "C" 
+{
+#endif
 
 class Session;
 class Replica;
 class ReplicaManager;
-
 
 
 struct ServerConfig {
@@ -27,12 +32,20 @@ struct ServerConfig {
   std::optional<ReplicaOf> replicaof;
 };
 
+extern std::optional<int> cli_id;
 
 class Server {
   friend class Session;
 
 public:
   Server(asio::io_context &io_context, const ServerConfig &config);
+
+  std::atomic<int> global_client_id_counter{0};
+  int client_id=0;
+
+  int generate_client_id() {
+  return global_client_id_counter++;
+  }
 
 private:
   void start_accept();
@@ -53,4 +66,10 @@ private:
   std::shared_ptr<ReplicationInfo> replication_info_;
   std::shared_ptr<ReplicaManager> replica_manager_;
   std::shared_ptr<Session> master_session_;
+
+
 };
+
+#ifdef __cplusplus
+}
+#endif

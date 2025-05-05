@@ -26,9 +26,10 @@ asio::io_context &Session::get_io_context()
   return io_context_;
 }
 
-void Session::start()
+void Session::start(int cl_id)
 {
   auto shared_self = shared_from_this();
+  
   std::cout << "Start a read\n";
   socket_.async_read_some(
       asio::buffer(data_),
@@ -66,7 +67,7 @@ void Session::handle_write(const asio::error_code &error_code, size_t len)
 {
   if (!error_code)
   {
-    start();
+    start(client_id);
   }
   else
   {
@@ -94,6 +95,6 @@ bool Session::is_session_closed() const
 void Session::handle_message(const std::string message)
 {
   std::cout << "Debug: receive message = " << message << "\n";
-
-  command_handler_.handle_raw_command(message);
+  
+  command_handler_.handle_raw_command(message,client_id);
 }

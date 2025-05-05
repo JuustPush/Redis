@@ -55,7 +55,7 @@ std::pair<std::optional<uint64_t>, std::optional<int8_t>> get_str_bytes_len(std:
 			// If the two most significant bits are 00
 			// The length is the lower 6 bits of the byte
 			return {byte & 0x3F, std::nullopt};
-		}
+		} 
 		case 1:
 		{
 			// If the two most significant bits are 01
@@ -252,13 +252,26 @@ void Server::start_accept()
                          });
 }
 
+
 void Server::handle_accept(std::shared_ptr<Session> session,
                            const asio::error_code &error_code)
 {
   if (!error_code)
   {
     std::cout << "Connected\n";
-    session->start();
+    
+    client_id=generate_client_id();
+    
+    //forCommander=client_id;
+    cli_id=client_id;
+    session->start(client_id);
+  //asio::ip::tcp::socket socket;
+  // auto& socket = session->get_socket(); 
+  //   auto endpoint = socket.remote_endpoint();
+  //   std::string client_addr = endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
+  //   std::cout<<"client addr "<<client_addr<<std::endl;
+
+    
   }
   else
   {
@@ -266,6 +279,7 @@ void Server::handle_accept(std::shared_ptr<Session> session,
   }
   start_accept();
 }
+
 
 std::shared_ptr<ReplicationInfo>
 Server::init_replication_info(const ServerConfig &config)
@@ -284,7 +298,6 @@ Server::init_replication_info(const ServerConfig &config)
   info->master_replid = random_string(kReplidLen);
   return info;
 }
-
 bool Server::master_handshake(const ServerConfig &config)
 {
   master_session_ = std::make_shared<Session>(io_context, this, true);
@@ -347,7 +360,7 @@ bool Server::master_handshake(const ServerConfig &config)
       resp_buffer.consume(num_bytes);
       std::string command{asio::buffers_begin(resp_buffer.data()),
                           asio::buffers_end(resp_buffer.data())};
-      master_session_->start();
+      master_session_->start(client_id);
       master_session_->handle_message(command);
     }
   }
@@ -358,3 +371,5 @@ bool Server::master_handshake(const ServerConfig &config)
   }
   return true;
 }
+
+std::optional<int> cli_id = std::nullopt;

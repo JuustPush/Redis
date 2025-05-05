@@ -17,13 +17,15 @@ class Session : public std::enable_shared_from_this<Session> {
   friend class CommandHandler;
 
 public:
+
+  int client_id=0;
   Session(asio::io_context &io_context, Server *server, bool is_master = false);
 
   tcp::socket &get_socket();
 
   asio::io_context &get_io_context();
 
-  void start();
+  void start(int client_id);
 
   template <typename F>
   void write(std::string message, F callback, bool start_read = true) {
@@ -35,7 +37,7 @@ public:
          start_read](const asio::error_code &error_code, size_t len) {
           callback(error_code, len);
           if (start_read) {
-            start();
+            start(client_id);
           }
         });
   }

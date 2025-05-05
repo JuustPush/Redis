@@ -3,6 +3,7 @@
 #include "ReplicationInfo.h"
 #include "Session.h"
 #include "Storage.h"
+#include "Server.h"
 #include "commands/Command.h"
 #include "commands/Echo.h"
 #include "commands/Get.h"
@@ -21,6 +22,8 @@
 #include <memory>
 #include <queue>
 #include <utility>
+#include <map>
+
 
 
 void def_call_back(const asio::error_code &error_code,
@@ -41,11 +44,11 @@ void def_call_back(const asio::error_code &error_code,
 //     }
 // }
 
-
+bool complex=false;
 bool multi = false;
-std::vector<std::vector<std::string>> q;
+std::map<std::string,std::vector<std::vector<std::string>>> q;
 std::unique_ptr<commands::Command>::pointer command;
-int fd_multi;
+std::string fd_multi;
 
 CommandHandler::CommandHandler(
     std::shared_ptr<KVStorage> data,
@@ -69,7 +72,7 @@ CommandHandler::CommandHandler(
   //command_map_.emplace("multi",std::make_unique<commands::Multi>(data_));
 }
 
-void CommandHandler::handle_raw_command(const std::string &raw_command) {
+void CommandHandler::handle_raw_command(const std::string &raw_command,int client_id){ 
   auto commands = Parser::decode(raw_command);
   for (const auto &command_list : commands) {
     std::string main_command = command_list[0];
@@ -84,16 +87,22 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
     //   return;
     // }
     
+    auto& socket = session_->get_socket(); 
+    auto endpoint = socket.remote_endpoint();
+    std::string client_addr = endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
+    std::cout<<"client addr "<<client_addr<<std::endl;
+
+
+
     std::cout << "Can go here first\n";
+    std::cout<<"multi check "<<multi<<std::endl;
     
     if (it != command_map_.end()) command = it->second.get();
+    //std::cout<<"client id: "<<client_id<<std::endl;
     
-    
-    
-    if (fd_multi) std::cout<<"fd multi: "<<fd_multi<<std::endl;
     if (main_command=="multi"){
       multi=true;
-      fd_multi =session_->socket_.native_handle();
+      fd_multi =client_addr;
       std::cout<<"Start fd_multi: "<<fd_multi<<std::endl;
       session_->write("+OK\r\n", def_call_back);
       continue;
@@ -102,7 +111,7 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
       
       std::cout<<"q empty? "<<q.empty()<<std::endl;
       std::cout<<"multi? "<<multi<<std::endl;
-      if (q.empty() && multi == false){
+      if (q[client_addr].empty() && multi == false){
         std::cout<<"test queue empty"<<std::endl;
         session_->write("-ERR EXEC without MULTI\r\n", def_call_back);
         multi=false;
@@ -126,33 +135,32 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
       }
       return;
     }
-
     else if (multi){
       if (command_list[0]=="GET"){
         bool flag=false;
-        //std::cout<<"q size: "<<q.size()<<std::endl;
-        for (int i=0;i<q.size();i++){
-          std::cout<<q[i][1]<<" "<<command_list[1]<<std::endl;
-          if (q[i][1] == command_list[1]){
-            flag = true;
-          }
-        } 
+        // for (int i=0;i<q.size();i++){
+        //   std::cout<<q[client_addr][i][1]<<" "<<command_list[1]<<std::endl;
+        //   if (q[client_addr][i][1] == command_list[1]){
+        //     flag = true;
+        //   }
+        // } 
         std::cout<<"bool flag? :"<<flag<<std::endl;
-        int fd_cur=session_->socket_.native_handle();
+        std::string fd_cur=client_addr;
         std::cout<<"fd cur: "<<fd_cur<<std::endl;
-        if (!flag || fd_cur!=fd_multi) session_->write("$-1\r\n", def_call_back);
+        //if (!flag || fd_cur!=fd_multi) session_->write("$-1\r\n", def_call_back);
+        if (fd_cur!=fd_multi) session_->write("$-1\r\n", def_call_back);
         else{
-          q.push_back(command_list);
+          q[client_addr].push_back(command_list);
           session_->write("+QUEUED\r\n", def_call_back);
         }
       }
       else {
-        q.push_back(command_list);
+        q[client_addr].push_back(command_list);
         session_->write("+QUEUED\r\n", def_call_back);
         std::cout<<command_list[0]<<" "<<command_list[1]<<std::endl;
       }
     }
-    if (!multi){
+    if (!multi && q[client_addr].empty()){
       command->handle(command_list, session_);
     }
     else if (main_command == "exec"){
@@ -167,26 +175,18 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
       std::transform(mc.begin(), mc.end(),
                    mc.begin(),
                    [](const auto c) { return tolower(c); });
-      std::cout<<"mc command: "<<mc<<std::endl;
+      
 
       std::unordered_map<std::string,std::string> str;
-      std::string result="*"+std::to_string(q.size())+"\r\n";
-    //   std::string result = "*" + std::to_string(arr.size()) + "\r\n";
-    // for (const auto &str : arr)
-    // {
-    //   result += "$" + std::to_string(str.size()) + "\r\n" + str + "\r\n";
-    // }
-
-      for (const auto &cl : q){
+      std::string result;
+      result="*"+std::to_string(q[client_addr].size())+"\r\n";
+      for (const auto &cl : q[client_addr]){
           std::string mc = cl[0];
+          std::cout<<"mc command: "<<mc<<std::endl;
           std::transform(mc.begin(), mc.end(),
                   mc.begin(),
                   [](const auto c) { return tolower(c); });
 
-          // auto it = command_map_.find(mc);
-          // if (it != command_map_.end()) command = it->second.get();
-          // std::cout<<cl[0]<<" "<<cl[1]<<std::endl;
-          // command->handle(cl, session_);
           if (mc == "set"){
             str[cl[1]]=std::stoi(cl[2]);
             data_->set(std::move(cl[1]), std::move(cl[2]));
@@ -195,8 +195,11 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
           } else if (mc == "get") {
             //"$" + std::to_string(str.size()) + "\r\n" + str + "\r\n";
             auto tmp = data_->get(cl[1]);
+            
             result+="$" + std::to_string(tmp.value().size())+"\r\n"+tmp.value() + "\r\n";
           } else if(mc=="incr"){
+
+            std::cout<<"data incr is: "<<cl[1]<<std::endl;
             auto temp = data_->get(cl[1]);
             if (temp.has_value())
             {
@@ -224,6 +227,7 @@ void CommandHandler::handle_raw_command(const std::string &raw_command) {
       }
       std::cout<<"result is: "<<result<<std::endl;
       multi=false;
+      q[client_addr].clear();
       session_->write(result, def_call_back);
     }
     
