@@ -91,7 +91,7 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
 
 
     std::cout << "Can go here first\n";
-    std::cout<<"multi check "<<multi<<std::endl;
+    std::cout<<"multi check? "<<multi<<std::endl;
     
     if (it != command_map_.end()) command = it->second.get();
     
@@ -219,7 +219,16 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
       q[client_addr].clear();
       session_->write(result, def_call_back);
     }
-    
+    else if (main_command == "type"){
+      std::cout<<"im here in type"<<std::endl;
+      auto tmp = data_->get(command_list[1]);
+      if (tmp.has_value()){
+        session_->write("+string\r\n", def_call_back);
+      }
+      else{
+        session_->write("+none\r\n", def_call_back);
+      }
+    }
 
     if (session_->is_master_session()) {
       replication_info_->updateOffset(
