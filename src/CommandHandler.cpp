@@ -82,11 +82,7 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
 
     auto it = command_map_.find(main_command);
     std::cout<<"main command: "<<main_command<<std::endl;
-    // if (it == command_map_.end() || (main_command != "multi" && main_command != "exec")) {
-    //   std::cout << "Incorrect command, command = " << main_command << "\n";
-    //   return;
-    // }
-    
+
     auto& socket = session_->get_socket(); 
     auto endpoint = socket.remote_endpoint();
     std::string client_addr = endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
@@ -98,7 +94,6 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
     std::cout<<"multi check "<<multi<<std::endl;
     
     if (it != command_map_.end()) command = it->second.get();
-    //std::cout<<"client id: "<<client_id<<std::endl;
     
     if (main_command=="multi"){
       multi=true;
@@ -138,16 +133,10 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
     else if (multi){
       if (command_list[0]=="GET"){
         bool flag=false;
-        // for (int i=0;i<q.size();i++){
-        //   std::cout<<q[client_addr][i][1]<<" "<<command_list[1]<<std::endl;
-        //   if (q[client_addr][i][1] == command_list[1]){
-        //     flag = true;
-        //   }
-        // } 
+
         std::cout<<"bool flag? :"<<flag<<std::endl;
         std::string fd_cur=client_addr;
         std::cout<<"fd cur: "<<fd_cur<<std::endl;
-        //if (!flag || fd_cur!=fd_multi) session_->write("$-1\r\n", def_call_back);
         if (fd_cur!=fd_multi) session_->write("$-1\r\n", def_call_back);
         else{
           q[client_addr].push_back(command_list);
