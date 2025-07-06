@@ -90,10 +90,12 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
 
 
 
-    std::cout << "Can go here first\n";
+    
     std::cout<<"multi check? "<<multi<<std::endl;
     
     if (it != command_map_.end()) command = it->second.get();
+
+    std::cout << "Can go here first\n";
     
     if (main_command=="multi"){
       multi=true;
