@@ -107,6 +107,7 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
       else{
         session_->write("+none\r\n", def_call_back);
       }
+      return;
     }
     else if (main_command=="multi"){
       multi=true;
