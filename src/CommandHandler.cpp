@@ -97,7 +97,18 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
 
     std::cout << "Can go here first\n";
     
-    if (main_command=="multi"){
+
+    if (main_command == "type"){
+      std::cout<<"im here in type"<<std::endl;
+      auto tmp = data_->get(command_list[1]);
+      if (tmp.has_value()){
+        session_->write("+string\r\n", def_call_back);
+      }
+      else{
+        session_->write("+none\r\n", def_call_back);
+      }
+    }
+    else if (main_command=="multi"){
       multi=true;
       fd_multi =client_addr;
       std::cout<<"Start fd_multi: "<<fd_multi<<std::endl;
@@ -220,16 +231,6 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
       multi=false;
       q[client_addr].clear();
       session_->write(result, def_call_back);
-    }
-    else if (main_command == "type"){
-      std::cout<<"im here in type"<<std::endl;
-      auto tmp = data_->get(command_list[1]);
-      if (tmp.has_value()){
-        session_->write("+string\r\n", def_call_back);
-      }
-      else{
-        session_->write("+none\r\n", def_call_back);
-      }
     }
 
     if (session_->is_master_session()) {
