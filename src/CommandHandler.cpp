@@ -116,6 +116,13 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
           std::string stream_key = command_list[1];
           if (streamKeys.find(stream_key) == streamKeys.end()) {
             streamKeys.insert(stream_key);
+          } else {
+            session_->write("-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n", def_call_back);
+            return;
+          }
+          if (command_list[2]=="0-0"){
+            session_->write("-ERR The ID specified in XADD must be greater than 0-0\r\n", def_call_back);
+            return;
           }
           if (command_list.size() >= 3) {
             std::string entry_id = command_list[2];
