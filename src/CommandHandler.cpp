@@ -105,6 +105,9 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
       if (tmp.has_value()){
         session_->write("+string\r\n", def_call_back);
       }
+      else if (streamKeys.find(command_list[1]) != streamKeys.end()) {
+        session_->write("+stream\r\n", def_call_back);
+      }
       else{
         session_->write("+none\r\n", def_call_back);
       }
