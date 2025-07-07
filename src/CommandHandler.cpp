@@ -23,7 +23,7 @@
 #include <queue>
 #include <utility>
 #include <map>
-
+#include <unordered_set>
 
 
 void def_call_back(const asio::error_code &error_code,
@@ -49,6 +49,7 @@ bool multi = false;
 std::map<std::string,std::vector<std::vector<std::string>>> q;
 std::unique_ptr<commands::Command>::pointer command;
 std::string fd_multi;
+std::unordered_set<std::string> streamKeys;
 
 CommandHandler::CommandHandler(
     std::shared_ptr<KVStorage> data,
@@ -108,6 +109,18 @@ void CommandHandler::handle_raw_command(const std::string &raw_command,int clien
         session_->write("+none\r\n", def_call_back);
       }
       return;
+    } else if (main_command == "xadd") {
+          std::string stream_key = command_list[1];
+          if (streamKeys.find(stream_key) == streamKeys.end()) {
+            streamKeys.insert(stream_key);
+          }
+          if (command_list.size() >= 3) {
+            std::string entry_id = command_list[2];
+            std::string response = "$" + std::to_string(entry_id.size()) + "\r\n" +
+                       entry_id + "\r\n";
+            session_->write(response, def_call_back);
+          }
+          return;
     }
     else if (main_command=="multi"){
       multi=true;
